@@ -63,3 +63,45 @@ class MultiLayerPerceptron(torch.nn.Module):
     def forward(self, x):
         logits = self.all_layers(x)
         return logits
+
+class Sampler:
+
+    def __init__(self, dataset):
+        # get the class labels from the dataset
+        y = np.concatenate([[data[1].numpy()] for data in dataset])
+        # compute the class weights
+        class_sample_count = np.array([len(np.where(y == t)[0]) for t in np.unique(y)])
+        weight = 1. / class_sample_count
+        samples_weight = np.array([weight[t] for t in y])
+        samples_weight = torch.from_numpy(samples_weight)
+        weight = torch.from_numpy(weight)
+        # use the class weights to create a WeightedRandomSampler
+        self.weight = weight.float()
+        self.sampler = torch.utils.data.WeightedRandomSampler(weights=samples_weight, num_samples=len(dataset), replacement=True)
+
+    def get_weight(self):
+        return self.weight
+    
+    def get_sampler(self):
+        return self.sampler
+
+# Focal loss from:
+# https://discuss.pytorch.org/t/is-this-a-correct-implementation-for-focal-loss-in-pytorch/43327/8
+
+class FocalLoss(torch.nn.Module):
+    
+    def __init__(self, weight=None, gamma=2., reduction='none'):
+        torch.nn.Module.__init__(self)
+        self.weight = weight
+        self.gamma = gamma
+        self.reduction = reduction
+        
+    def forward(self, input_tensor, target_tensor):
+        log_prob = torch.nn.functional.log_softmax(input_tensor, dim=-1)
+        prob = torch.exp(log_prob)
+        return torch.nn.functional.nll_loss(((1 - prob) ** self.gamma) * log_prob,
+                                            target_tensor,
+                                            weight = self.weight,
+                                            reduction = self.reduction)
+
+
